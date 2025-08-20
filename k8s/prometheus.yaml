@@ -58,19 +58,10 @@ data:
         - source_labels: [__address__]
           target_label: purpose
           replacement: 'stealth-memory-leak-demo'
-        
-        # 메트릭 필터링 (거짓 "정상" 데이터만)
-        metric_relabel_configs:
-        - source_labels: [__name__]
-          regex: '.*'
-          action: keep
-        - source_labels: [__name__]
-          target_label: metric_source
-          replacement: 'fake-healthy'
-        - source_labels: [__name__]
+        - source_labels: [__address__]
           target_label: monitoring_type
           replacement: 'standard'
-        - source_labels: [__name__]
+        - source_labels: [__address__]
           target_label: reliability
           replacement: 'deceptive'
       
@@ -109,3 +100,91 @@ data:
         - source_labels: [__meta_kubernetes_pod_name]
           action: replace
           target_label: kubernetes_pod_name
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: memleak-demo
+  labels:
+    app: prometheus
+    purpose: "stealth-memory-leak-demo"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        purpose: "stealth-memory-leak-demo"
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.45.0
+        ports:
+        - containerPort: 9090
+          name: http
+        args:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.path=/prometheus'
+        - '--web.console.libraries=/etc/prometheus/console_libraries'
+        - '--web.console.templates=/etc/prometheus/consoles'
+        - '--storage.tsdb.retention.time=200h'
+        - '--web.enable-lifecycle'
+        volumeMounts:
+        - name: prometheus-config
+          mountPath: /etc/prometheus
+        - name: prometheus-storage
+          mountPath: /prometheus
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+      volumes:
+      - name: prometheus-config
+        configMap:
+          name: prometheus-config
+      - name: prometheus-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: memleak-demo
+  labels:
+    app: prometheus
+    purpose: "stealth-memory-leak-demo"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: http
+  selector:
+    app: prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service-headless
+  namespace: memleak-demo
+  labels:
+    app: prometheus
+    purpose: "stealth-memory-leak-demo"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: http
+  selector:
+    app: prometheus
