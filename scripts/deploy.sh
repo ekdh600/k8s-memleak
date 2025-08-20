@@ -7,6 +7,32 @@ set -e
 
 echo "☸️ Memory Leak Demo Kubernetes 배포 시작..."
 
+# 이미지 이름 설정 (기본값: Docker Hub 이미지)
+IMAGE_NAME=${1:-"ekdh600/memory-leak-demo:latest"}
+echo "🐳 사용할 이미지: ${IMAGE_NAME}"
+
+# 로컬 registry 사용 시 이미지 존재 확인
+if [[ "${IMAGE_NAME}" == "localhost:5000/"* ]]; then
+    echo "🏠 로컬 registry 이미지 확인 중..."
+    
+    # registry 실행 확인
+    if ! docker ps | grep -q registry; then
+        echo "❌ 로컬 registry가 실행되지 않았습니다."
+        echo "💡 먼저 이미지 변환을 실행하세요: ./scripts/convert-image.sh"
+        exit 1
+    fi
+    
+    # 이미지 존재 확인
+    IMAGE_NAME_SHORT=${IMAGE_NAME#localhost:5000/}
+    if ! curl -s "http://localhost:5000/v2/${IMAGE_NAME_SHORT%:*}/tags/list" > /dev/null; then
+        echo "❌ 로컬 registry에서 이미지를 찾을 수 없습니다: ${IMAGE_NAME}"
+        echo "💡 먼저 이미지 변환을 실행하세요: ./scripts/convert-image.sh"
+        exit 1
+    fi
+    
+    echo "✅ 로컬 registry에서 이미지 확인됨: ${IMAGE_NAME}"
+fi
+
 # kubectl 설치 확인
 if ! command -v kubectl &> /dev/null; then
     echo "❌ kubectl이 설치되지 않았습니다. Kubernetes 클라이언트를 설치하세요."
@@ -37,7 +63,10 @@ kubectl apply -f k8s/grafana.yaml
 
 # 메인 애플리케이션 배포
 echo "🚀 메모리 누수 시뮬레이션 애플리케이션 배포 중..."
-kubectl apply -f k8s/deployment.yaml
+echo "   이미지: ${IMAGE_NAME}"
+
+# deployment.yaml에서 이미지 이름을 동적으로 변경
+sed "s|image: .*|image: ${IMAGE_NAME}|" k8s/deployment.yaml | kubectl apply -f -
 
 # 서비스 배포
 echo "🔌 서비스 배포 중..."
@@ -71,3 +100,8 @@ echo "📊 포트포워딩 명령어:"
 echo "kubectl -n memleak-demo port-forward svc/stealth-memory-leaker 8080:8080"
 echo "kubectl -n memleak-demo port-forward svc/grafana 3000:3000"
 echo "kubectl -n memleak-demo port-forward svc/prometheus 9090:9090"
+echo ""
+echo "🐳 이미지 사용법:"
+echo "- 로컬 이미지: ./scripts/deploy.sh memory-leak-demo:latest"
+echo "- Docker Hub 이미지: ./scripts/deploy.sh ekdh600/memory-leak-demo:latest"
+echo "- 기본값: ./scripts/deploy.sh (ekdh600/memory-leak-demo:latest 사용)"

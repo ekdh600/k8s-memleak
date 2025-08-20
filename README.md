@@ -71,14 +71,28 @@ git clone https://github.com/ekdh600/k8s-memleak.git
 cd k8s-memleak
 ```
 
-### 2. 컨테이너 이미지 빌드 (GCC 포함)
+### 2. 통합 빌드 및 배포 (권장)
 ```bash
-./scripts/build.sh
+# 🏠 로컬 registry 사용 (기본값)
+./scripts/build-and-deploy.sh
+
+# 🐳 Docker Hub 사용
+./scripts/build-and-deploy.sh --docker-hub
+
+# 🏷️ 사용자 정의 이미지 이름
+./scripts/build-and-deploy.sh --image-name my-image:v1.0
 ```
 
-### 3. 쿠버네티스에 배포
+### 3. 단계별 빌드 및 배포
 ```bash
-./scripts/deploy.sh
+# 1단계: Docker 이미지 빌드
+./scripts/build.sh
+
+# 2단계: 이미지 변환 (로컬 사용 시)
+./scripts/convert-image.sh
+
+# 3단계: Kubernetes 배포
+./scripts/deploy.sh localhost:5000/memory-leak-demo:latest
 ```
 
 ### 4. eBPF 도구 설정

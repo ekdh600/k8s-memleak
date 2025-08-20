@@ -42,11 +42,21 @@ if [ $? -eq 0 ]; then
     echo "📊 이미지 정보:"
     docker images "${FULL_IMAGE_NAME}"
     
+    # 이미지 변환 옵션
+    echo ""
+    echo "🔄 이미지 변환 옵션:"
+    echo "1. CRI 이미지로 변환 (로컬 Kubernetes 사용):"
+    echo "   ./scripts/convert-image.sh"
+    echo ""
+    echo "2. Docker Hub에 push (원격 Kubernetes 사용):"
+    echo "   docker tag ${FULL_IMAGE_NAME} ekdh600/${FULL_IMAGE_NAME}"
+    echo "   docker push ekdh600/${FULL_IMAGE_NAME}"
     echo ""
     echo "🎯 다음 단계:"
     echo "1. 로컬 테스트: docker-compose up -d"
-    echo "2. Kubernetes 배포: ./scripts/deploy.sh"
-    echo "3. eBPF 도구 설정: ./scripts/ebpf-setup.sh"
+    echo "2. 로컬 Kubernetes 배포: ./scripts/convert-image.sh && ./scripts/deploy.sh localhost:5000/memory-leak-demo:latest"
+    echo "3. 원격 Kubernetes 배포: ./scripts/deploy.sh ekdh600/memory-leak-demo:latest"
+    echo "4. eBPF 도구 설정: ./scripts/ebpf-setup.sh"
 else
     echo "❌ 이미지 빌드 실패!"
     exit 1

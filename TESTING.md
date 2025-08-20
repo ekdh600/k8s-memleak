@@ -20,8 +20,13 @@
 # 프로젝트 디렉토리로 이동
 cd memory-leak-demo
 
-# Docker 이미지 빌드
-docker build -t memory-leak-demo:latest .
+# 방법 1: 통합 스크립트 사용 (권장)
+./scripts/build-and-deploy.sh
+
+# 방법 2: 단계별 실행
+./scripts/build.sh
+./scripts/convert-image.sh
+./scripts/deploy.sh localhost:5000/memory-leak-demo:latest
 
 # 빌드 확인
 docker images | grep memory-leak-demo
@@ -293,6 +298,26 @@ docker stop $(docker ps -q)
 
 # 권한 문제
 docker run --privileged -p 8080:8080 -p 9090:9090 memory-leak-demo:latest
+
+#### 이미지 이름 문제 (Kubernetes 배포 시)
+```bash
+# 오류: ImagePullBackOff - stealth-memory-leaker:latest
+# 원인: containerd가 로컬 이미지를 인식하지 못함
+
+# 해결 방법 1: Docker Hub 이미지 사용 (권장)
+./scripts/deploy.sh ekdh600/memory-leak-demo:latest
+
+# 해결 방법 2: Kind/Minikube에 이미지 로드 후 로컬 사용
+kind load docker-image memory-leak-demo:latest
+# 또는
+minikube image load memory-leak-demo:latest
+./scripts/deploy.sh memory-leak-demo:latest
+
+# 해결 방법 3: 로컬 registry 사용
+docker run -d -p 5000:5000 --name registry registry:2
+docker tag memory-leak-demo:latest localhost:5000/memory-leak-demo:latest
+docker push localhost:5000/memory-leak-demo:latest
+./scripts/deploy.sh localhost:5000/memory-leak-demo:latest
 ```
 
 #### eBPF 도구 설치 실패
