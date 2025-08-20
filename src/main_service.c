@@ -10,12 +10,12 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include "fake_metrics.h"
 
 #define CHUNK_SIZE (1024 * 1024)  // 1MB
 #define MAX_CHUNKS 2000
 #define LEAK_INTERVAL 8  // 8초마다 (더 은밀하게)
 #define HTTP_PORT 8080
-#define METRICS_PORT 9090
 #define MAX_CONNECTIONS 100
 
 // 전역 변수들
@@ -112,94 +112,6 @@ void generate_healthy_response(int client_socket) {
         total_requests,
         healthy_responses,
         time(NULL)
-    );
-    
-    write(client_socket, response, strlen(response));
-}
-
-// Prometheus 메트릭 생성 (거짓 "정상" 데이터)
-void generate_fake_metrics(int client_socket) {
-    struct rusage rusage;
-    getrusage(RUSAGE_SELF, &rusage);
-    
-    // 실제 메모리 사용량
-    long real_rss_kb = rusage.ru_maxrss;
-    
-    // 거짓 "정상" 메트릭 생성
-    long fake_rss_kb = real_rss_kb;
-    if (fake_rss_kb > 100000) {  // 100MB 초과시
-        fake_rss_kb = 80000 + (fake_rss_kb % 20000);  // 80-100MB 범위로 조작
-    }
-    
-    // GC 메트릭 (항상 "정상")
-    int gc_count = total_requests / 100;  // 요청 수에 비례
-    int gc_duration = 10 + (total_requests % 20);  // 10-30ms
-    
-    // 응답 시간 (점진적 증가를 숨김)
-    int response_time = 50 + (total_requests % 30);  // 50-80ms로 고정
-    
-    char response[4096];
-    snprintf(response, sizeof(response),
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/plain; version=0.0.4; charset=utf-8\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "\r\n"
-        "# HELP http_requests_total Total number of HTTP requests\n"
-        "# TYPE http_requests_total counter\n"
-        "http_requests_total %d\n"
-        "\n"
-        "# HELP http_request_duration_seconds HTTP request duration in seconds\n"
-        "# TYPE http_request_duration_seconds histogram\n"
-        "http_request_duration_seconds_bucket{le=\"0.1\"} %d\n"
-        "http_request_duration_seconds_bucket{le=\"0.5\"} %d\n"
-        "http_request_duration_seconds_bucket{le=\"1.0\"} %d\n"
-        "http_request_duration_seconds_bucket{le=\"+Inf\"} %d\n"
-        "http_request_duration_seconds_sum %.3f\n"
-        "http_request_duration_seconds_count %d\n"
-        "\n"
-        "# HELP process_resident_memory_bytes Resident memory size in bytes\n"
-        "# TYPE process_resident_memory_bytes gauge\n"
-        "process_resident_memory_bytes %ld\n"
-        "\n"
-        "# HELP process_virtual_memory_bytes Virtual memory size in bytes\n"
-        "# TYPE process_virtual_memory_bytes gauge\n"
-        "process_virtual_memory_bytes %ld\n"
-        "\n"
-        "# HELP go_gc_cycles_total Total number of garbage collection cycles\n"
-        "# TYPE go_gc_cycles_total counter\n"
-        "go_gc_cycles_total %d\n"
-        "\n"
-        "# HELP go_gc_duration_seconds A summary of the GC invocation durations\n"
-        "# TYPE go_gc_duration_seconds summary\n"
-        "go_gc_duration_seconds{quantile=\"0\"} %.3f\n"
-        "go_gc_duration_seconds{quantile=\"0.25\"} %.3f\n"
-        "go_gc_duration_seconds{quantile=\"0.5\"} %.3f\n"
-        "go_gc_duration_seconds{quantile=\"0.75\"} %.3f\n"
-        "go_gc_duration_seconds{quantile=\"1\"} %.3f\n"
-        "go_gc_duration_seconds_sum %.3f\n"
-        "go_gc_duration_seconds_count %d\n"
-        "\n"
-        "# HELP service_health_status Service health status (ALWAYS HEALTHY)\n"
-        "# TYPE service_health_status gauge\n"
-        "service_health_status 1\n"
-        "\n"
-        "# HELP memory_usage_percent Memory usage percentage (NORMALIZED)\n"
-        "# TYPE memory_usage_percent gauge\n"
-        "memory_usage_percent %.1f\n"
-        "\n"
-        "# HELP memory_leak_simulator_chunks_total Total number of memory chunks (HIDDEN)\n"
-        "# TYPE memory_leak_simulator_chunks_total counter\n"
-        "memory_leak_simulator_chunks_total %d\n",
-        total_requests,
-        total_requests, total_requests, total_requests, total_requests,
-        response_time / 1000.0, total_requests,
-        fake_rss_kb * 1024, fake_rss_kb * 1024,
-        gc_count,
-        gc_duration / 1000.0, gc_duration / 1000.0, gc_duration / 1000.0, 
-        gc_duration / 1000.0, gc_duration / 1000.0,
-        gc_duration / 1000.0, gc_count,
-        75.0,  // 항상 75%로 표시 (정상 범위)
-        chunk_count  // 숨겨진 실제 메모리 누수
     );
     
     write(client_socket, response, strlen(response));

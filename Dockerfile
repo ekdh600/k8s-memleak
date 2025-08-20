@@ -1,16 +1,14 @@
-# 은밀한 메모리 누수 시뮬레이션 서비스 - 최적화된 멀티스테이지 빌드
-FROM gcc:11 as builder
+# 파드 메모리 누수 시뮬레이션 서비스 - GCC 기반 멀티스테이지 빌드
+FROM gcc:11 AS builder
 
 WORKDIR /app
-COPY src/*.c .
+COPY src/ .
 
-# 모든 C 파일을 정적 컴파일
-RUN gcc -O2 -static -s -pthread -o main_service main_service.c \
+# 모든 소스 파일을 포함하여 main_service 컴파일
+RUN gcc -O2 -static -s -pthread -o main_service main_service.c fake_metrics.c \
     && gcc -O2 -static -s -pthread -o healthy_service healthy_service.c \
-    && gcc -O2 -static -s -pthread -o fake_metrics fake_metrics.c \
-    && gcc -O2 -static -s -pthread -o memory_leak memory_leak.c \
-    && strip main_service healthy_service fake_metrics memory_leak \
-    && ls -lh *.c *.o main_service healthy_service fake_metrics memory_leak
+    && strip main_service healthy_service \
+    && ls -lh *.c *.h main_service healthy_service
 
 # 실행 이미지 (Alpine Linux - 초경량)
 FROM alpine:3.18
@@ -24,11 +22,9 @@ RUN apk add --no-cache \
 WORKDIR /app
 COPY --from=builder /app/main_service .
 COPY --from=builder /app/healthy_service .
-COPY --from=builder /app/fake_metrics .
-COPY --from=builder /app/memory_leak .
 
 # 실행 권한 설정
-RUN chmod +x main_service healthy_service fake_metrics memory_leak
+RUN chmod +x main_service healthy_service
 
 # 메타데이터
 LABEL maintainer="Memory Leak Demo Project"
