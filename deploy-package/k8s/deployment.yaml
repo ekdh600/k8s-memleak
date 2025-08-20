@@ -1,60 +1,87 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: leaky
+  name: memory-leaker
   namespace: memleak-demo
   labels:
-    app: leaky
-    version: v1
+    app: memory-leaker
+    version: "2.0.0"
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: leaky
+      app: memory-leaker
   template:
     metadata:
       labels:
-        app: leaky
-        version: v1
+        app: memory-leaker
+        version: "2.0.0"
       annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "6060"
-        prometheus.io/path: "/debug/pprof/"
+        # eBPF 트래킹을 위한 어노테이션
+        gadget.inspektor-gadget.io/container: memory-leaker
     spec:
       containers:
-      - name: leaky
-        image: memleak:latest
-        imagePullPolicy: Never  # 로컬 이미지 사용
-        ports:
-        - containerPort: 6060
-          name: pprof
+      - name: memory-leaker
+        image: memory-leaker:latest
+        imagePullPolicy: IfNotPresent
         resources:
           requests:
-            memory: "128Mi"
+            memory: "100Mi"
             cpu: "100m"
           limits:
-            memory: "512Mi"
+            memory: "2Gi"
             cpu: "500m"
+        securityContext:
+          # eBPF 트래킹을 위해 필요
+          privileged: true
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+            - SYS_PTRACE
+        env:
+        - name: LEAK_INTERVAL
+          value: "5"
+        - name: MAX_CHUNKS
+          value: "1000"
+        ports:
+        - containerPort: 8080
+          name: http
         livenessProbe:
-          httpGet:
-            path: /debug/pprof/
-            port: 6060
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          exec:
+            command:
+            - pgrep
+            - memory_leak
+          initialDelaySeconds: 10
+          periodSeconds: 30
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
-          httpGet:
-            path: /debug/pprof/
-            port: 6060
+          exec:
+            command:
+            - pgrep
+            - memory_leak
           initialDelaySeconds: 5
-          periodSeconds: 5
+          periodSeconds: 10
           timeoutSeconds: 3
           failureThreshold: 3
-        securityContext:
-          allowPrivilegeEscalation: false
-          runAsNonRoot: true
-          runAsUser: 1001
-          capabilities:
-            drop:
-            - ALL
+        volumeMounts:
+        - name: proc
+          mountPath: /proc
+          readOnly: true
+        - name: sys
+          mountPath: /sys
+          readOnly: true
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      # eBPF 트래킹을 위한 보안 컨텍스트
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

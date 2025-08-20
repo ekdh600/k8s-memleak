@@ -3,93 +3,183 @@
 ## 📋 사전 요구사항
 
 ### 필수 도구
-- **Go 1.22+**: [다운로드](https://golang.org/dl/)
 - **Docker**: [다운로드](https://docs.docker.com/get-docker/)
 - **kubectl**: [설치 가이드](https://kubernetes.io/docs/tasks/tools/)
 
 ### 선택 도구
 - **Kind**: 로컬 쿠버네티스 클러스터 (로컬 개발용)
 - **Minikube**: 로컬 쿠버네티스 클러스터 (로컬 개발용)
-- **Helm**: 쿠버네티스 패키지 매니저
+- **Make**: 빌드 자동화 (macOS: `brew install make`)
 
 ## 🔧 설치 과정
 
 ### 1. 프로젝트 클론
 ```bash
-git clone <repository-url>
-cd memory-leak-demo
+git clone https://github.com/ekdh600/k8s-memleak.git
+cd k8s-memleak
 ```
 
-### 2. Go 의존성 설치
+### 2. Docker 이미지 빌드
 ```bash
-go mod tidy
+make docker-build
 ```
 
-### 3. 애플리케이션 빌드
+### 3. 쿠버네티스 배포
 ```bash
-go build -o app main.go
+make deploy
 ```
 
-### 4. Docker 이미지 빌드
+### 4. eBPF 도구 설치
 ```bash
-docker build -t memleak:latest .
+make install-ebpf
 ```
 
 ## 🚀 빠른 시작
 
 ### 로컬 실행
 ```bash
-# 애플리케이션 실행
-./app
+# C 프로그램 빌드
+make build
 
-# pprof 서버 접근
-# http://localhost:6060/debug/pprof/
+# 메모리 누수 시뮬레이션 실행
+make run
+```
+
+### Docker 실행
+```bash
+# Docker 이미지 빌드
+make docker-build
+
+# Docker 컨테이너 실행
+make docker-run
 ```
 
 ### 쿠버네티스 배포
 ```bash
-# 배포 패키지 사용 (권장)
-cd deploy-package
-./scripts/setup-cluster.sh
-./deploy.sh
+# 배포
+make deploy
 
-# 또는 수동 배포
-kubectl apply -f k8s/
+# 상태 확인
+make status
+
+# 로그 확인
+make logs
+```
+
+## 🔍 eBPF 트래킹
+
+### Inspektor Gadget 설치
+```bash
+make install-ebpf
+```
+
+### 메모리 누수 추적
+```bash
+make track-memory
+```
+
+### 수동 트래킹
+```bash
+# Pod 이름 확인
+kubectl -n memleak-demo get pods
+
+# eBPF로 메모리 누수 추적
+kubectl gadget memleak -n memleak-demo -p <pod-name>
 ```
 
 ## 🧪 테스트
 
-### 단위 테스트
+### 기본 기능 테스트
 ```bash
-go test -v
+# 로컬 빌드 테스트
+make build
+
+# Docker 빌드 테스트
+make docker-build
+
+# 쿠버네티스 배포 테스트
+make deploy
 ```
 
-### 메모리 누수 감지
+### eBPF 트래킹 테스트
 ```bash
-chmod +x ci/leak_check.sh
-./ci/leak_check.sh
+# eBPF 도구 설치 테스트
+make install-ebpf
+
+# 트래킹 기능 테스트
+make track-memory
 ```
 
 ## 📊 모니터링
 
-### 실시간 모니터링
+### Pod 상태 확인
 ```bash
-chmod +x scripts/monitor-memory.sh
-./scripts/monitor-memory.sh
+make status
 ```
 
-### 프로파일 수집
+### 실시간 로그 확인
 ```bash
-chmod +x scripts/collect-profiles.sh
-./scripts/collect-profiles.sh
+make logs
+```
+
+### 수동 모니터링
+```bash
+# Pod 상태
+kubectl -n memleak-demo get all
+
+# Pod 로그
+kubectl -n memleak-demo logs -f deployment/memory-leaker
+
+# 이벤트
+kubectl -n memleak-demo get events
 ```
 
 ## 🔍 문제 해결
 
 ### 일반적인 문제들
-1. **권한 문제**: eBPF 도구 사용 시 privileged 권한 필요
-2. **포트 충돌**: 6060 포트 사용 중인지 확인
-3. **이미지 로드 실패**: 클러스터 타입에 따른 이미지 로드 방법 확인
+
+#### 1. 권한 문제
+```bash
+# Pod가 privileged 모드로 실행되는지 확인
+kubectl -n memleak-demo describe pod <pod-name>
+
+# 필요한 capabilities 확인
+kubectl -n memleak-demo get pod <pod-name> -o yaml | grep -A 10 securityContext
+```
+
+#### 2. 이미지 빌드 실패
+```bash
+# Docker 데몬 상태 확인
+docker info
+
+# 이미지 정리 후 재빌드
+docker system prune -f
+make docker-build
+```
+
+#### 3. 배포 실패
+```bash
+# 네임스페이스 확인
+kubectl get namespaces | grep memleak
+
+# 이벤트 확인
+kubectl -n memleak-demo get events
+
+# Pod 상태 상세 확인
+kubectl -n memleak-demo describe pod <pod-name>
+```
+
+#### 4. eBPF 도구 설치 실패
+```bash
+# 네임스페이스 확인
+kubectl get namespaces | grep gadget
+
+# Pod 상태 확인
+kubectl get pods -n gadget-system
+
+# 로그 확인
+kubectl logs -n gadget-system -l app=gadget
+```
 
 ### 디버깅 명령어
 ```bash
@@ -97,21 +187,40 @@ chmod +x scripts/collect-profiles.sh
 kubectl -n memleak-demo get all
 
 # 로그 확인
-kubectl -n memleak-demo logs -f deployment/leaky
+kubectl -n memleak-demo logs -f deployment/memory-leaker
 
 # 이벤트 확인
 kubectl -n memleak-demo get events --sort-by='.lastTimestamp'
+
+# Pod 상세 정보
+kubectl -n memleak-demo describe pod <pod-name>
 ```
 
 ## 📚 다음 단계
 
-1. **eBPF 도구 설치**: [eBPF 가이드](eBPF%20도구%20설치%20및%20사용%20가이드.md)
-2. **Prometheus + Grafana**: [모니터링 가이드](Prometheus%20+%20Grafana%20대시보드%20구축%20가이드.md)
-3. **고급 진단**: [진단 도구 가이드](scripts/ebpf-memleak.sh)
+1. **eBPF 트래킹**: [eBPF 가이드](EBPF_GUIDE.md)
+2. **고급 진단**: 다양한 eBPF 도구 사용법
+3. **성능 최적화**: 트래킹 오버헤드 최소화
 
 ## 🤝 지원
 
 문제가 발생하거나 질문이 있으시면:
 - [GitHub Issues](../../issues)에 버그 리포트
 - [GitHub Discussions](../../discussions)에서 질문
-- [Wiki](../../wiki)에서 상세 가이드 확인
+- [eBPF 가이드](EBPF_GUIDE.md)에서 상세 가이드 확인
+
+## 🔄 정리
+
+### 로컬 정리
+```bash
+make clean
+```
+
+### 전체 정리
+```bash
+make clean-all
+```
+
+---
+
+**💡 팁**: 문제가 발생하면 `make status`로 상태를 확인하고, `make logs`로 로그를 분석하세요!

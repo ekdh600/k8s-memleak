@@ -1,52 +1,36 @@
-# 멀티스테이지 빌드를 사용한 Go 애플리케이션 Docker 이미지
-FROM golang:1.22-alpine AS builder
+# C 메모리 누수 시뮬레이터 - 최적화된 멀티스테이지 빌드
+FROM gcc:11 as builder
 
-# 빌드 의존성 설치
-RUN apk add --no-cache git ca-certificates tzdata
-
-# 작업 디렉토리 설정
 WORKDIR /app
+COPY src/memory_leak.c .
 
-# Go 모듈 파일 복사
-COPY go.mod ./
+# 최적화된 정적 컴파일 (최소 크기, 최대 성능)
+RUN gcc -O2 -static -s -o memory_leak memory_leak.c \
+    && strip memory_leak \
+    && ls -lh memory_leak
 
-# 의존성 다운로드
-RUN go mod download
+# 실행 이미지 (Alpine Linux - 초경량)
+FROM alpine:3.18
 
-# 소스 코드 복사
-COPY . .
+# 필요한 도구 설치 (최소한)
+RUN apk add --no-cache \
+    procps \
+    && rm -rf /var/cache/apk/*
 
-# 애플리케이션 빌드
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
-
-# 최종 이미지
-FROM alpine:latest
-
-# 런타임 의존성 설치
-RUN apk --no-cache add ca-certificates tzdata
-
-# 비root 사용자 생성
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
-
-# 작업 디렉토리 설정
 WORKDIR /app
+COPY --from=builder /app/memory_leak .
 
-# 빌드된 바이너리 복사
-COPY --from=builder /app/main .
+# 메타데이터
+LABEL maintainer="Memory Leak Demo Project"
+LABEL description="C-based memory leak simulator for eBPF tracking"
+LABEL version="2.0.0"
 
-# 소유권 변경
-RUN chown -R appuser:appgroup /app
+# 헬스체크 (프로세스 존재 확인)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD pgrep memory_leak || exit 1
 
-# 비root 사용자로 실행
-USER appuser
+# 포트 (필요시 HTTP 서버 추가 가능)
+EXPOSE 8080
 
-# 포트 노출
-EXPOSE 6060
-
-# 헬스체크
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:6060/debug/pprof/ || exit 1
-
-# 애플리케이션 실행
-CMD ["./main"]
+# 실행
+CMD ["./memory_leak"]
