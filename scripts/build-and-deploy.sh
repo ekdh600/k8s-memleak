@@ -73,14 +73,27 @@ echo "🚀 2단계: 이미지 변환 및 배포"
 echo "================================"
 
 if [ "$USE_LOCAL" = true ]; then
-    echo "🏠 로컬 registry 사용 모드"
+    echo "🏠 로컬 이미지 사용 모드"
     
-    # 이미지 변환
-    echo "🔄 Docker 이미지를 CRI 이미지로 변환 중..."
-    ./scripts/convert-image.sh "${IMAGE_NAME}"
-    
-    # 배포 이미지 설정
-    DEPLOY_IMAGE="localhost:5000/${IMAGE_NAME}"
+    # 이미지 직접 import (registry 없이)
+    echo "🔧 Docker 이미지를 containerd에 직접 import 중..."
+    if command -v ctr &> /dev/null; then
+        # Docker 이미지를 tar로 export
+        docker save "${IMAGE_NAME}" > /tmp/image.tar
+        
+        # containerd에 import
+        ctr -n k8s.io images import /tmp/image.tar
+        
+        # 임시 파일 정리
+        rm -f /tmp/image.tar
+        
+        echo "✅ containerd에 이미지 import 완료"
+        DEPLOY_IMAGE="${IMAGE_NAME}"
+    else
+        echo "❌ ctr 도구가 설치되지 않았습니다."
+        echo "💡 containerd-tools를 설치하거나 Docker Hub를 사용하세요."
+        exit 1
+    fi
     
     echo "✅ 이미지 변환 완료: ${DEPLOY_IMAGE}"
 else

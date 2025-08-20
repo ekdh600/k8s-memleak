@@ -54,7 +54,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "🎯 다음 단계:"
     echo "1. 로컬 테스트: docker-compose up -d"
-    echo "2. 로컬 Kubernetes 배포: ./scripts/convert-image.sh && ./scripts/deploy.sh localhost:5000/memory-leak-demo:latest"
+    echo "2. 로컬 Kubernetes 배포: ./scripts/convert-image.sh && ./scripts/deploy.sh [registry-ip]:5000/memory-leak-demo:latest"
     echo "3. 원격 Kubernetes 배포: ./scripts/deploy.sh ekdh600/memory-leak-demo:latest"
     echo "4. eBPF 도구 설정: ./scripts/ebpf-setup.sh"
 else

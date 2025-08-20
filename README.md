@@ -89,10 +89,21 @@ cd k8s-memleak
 ./scripts/build.sh
 
 # 2단계: 이미지 변환 (로컬 사용 시)
+# 방법: 직접 import (권장)
 ./scripts/convert-image.sh
 
 # 3단계: Kubernetes 배포
-./scripts/deploy.sh localhost:5000/memory-leak-demo:latest
+./scripts/deploy.sh memory-leak-demo:latest
+```
+
+### 4. 로컬 이미지 사용 방법
+```bash
+# ✅ 올바른 방법: 직접 import
+./scripts/import-image.sh
+./scripts/deploy.sh memory-leak-demo:latest
+
+# 또는 통합 스크립트 사용
+./scripts/build-and-deploy.sh
 ```
 
 ### 4. eBPF 도구 설정

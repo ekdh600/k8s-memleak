@@ -26,8 +26,8 @@ spec:
     spec:
       containers:
       - name: stealth-memory-leaker
-        image: ekdh600/memory-leak-demo:latest
-        imagePullPolicy: Always
+        image: memory-leak-demo:latest
+        imagePullPolicy: IfNotPresent
         resources:
           requests:
             memory: "100Mi"
