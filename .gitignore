@@ -1,0 +1,68 @@
+# Go 관련
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# 빌드 결과물
+app
+bin/
+dist/
+
+# 프로파일 파일
+*.pb
+profiles/
+
+# 로그 파일
+*.log
+logs/
+
+# 환경 변수 파일
+.env
+.env.local
+.env.*.local
+
+# IDE 설정
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS 관련
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker 관련
+.dockerignore
+
+# 쿠버네티스 관련
+*.kubeconfig
+kubeconfig
+
+# 임시 파일
+tmp/
+temp/
+*.tmp
+
+# 압축 파일
+*.tar.gz
+*.zip
+
+# 백업 파일
+*.bak
+*.backup
+*~
+
+# 로컬 설정
+local-config.yaml
+local-values.yaml

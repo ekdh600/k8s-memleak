@@ -1,0 +1,155 @@
+name: Memory Leak Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  memory-leak-test:
+    runs-on: ubuntu-latest
+    name: 메모리 누수 테스트
+    
+    steps:
+      - name: 📥 코드 체크아웃
+        uses: actions/checkout@v4
+        
+      - name: 🐹 Go 환경 설정
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          
+      - name: 📦 의존성 다운로드
+        run: go mod download
+        
+      - name: 🔨 애플리케이션 빌드
+        run: go build -o app main.go
+        
+      - name: 🧪 단위 테스트 (pprof 기반)
+        run: go test -v -run TestHeapDoesNotGrowUnbounded -timeout 2m
+        
+      - name: 🧪 메모리 누수 시뮬레이션 테스트
+        run: go test -v -run TestMemoryLeakSimulation -timeout 1m
+        
+      - name: 🔍 프로세스 메모리 누수 검사 (RSS 증가량)
+        run: |
+          chmod +x ci/leak_check.sh
+          BIN=./app DURATION=30 THRESHOLD_KB=15000 ./ci/leak_check.sh
+          
+      - name: 📊 pprof 힙 프로파일 생성
+        run: |
+          # 애플리케이션 백그라운드 실행
+          ./app >/dev/null 2>&1 &
+          PID=$!
+          sleep 5
+          
+          # 힙 프로파일 수집
+          curl -s http://localhost:6060/debug/pprof/heap > heap_profile.pb
+          
+          # 프로파일 정보 출력
+          echo "힙 프로파일 크기: $(wc -c < heap_profile.pb) bytes"
+          
+          # 프로세스 종료
+          kill $PID || true
+          
+      - name: 🎯 테스트 결과 요약
+        run: |
+          echo "✅ 모든 메모리 누수 테스트 완료"
+          echo "📊 테스트 결과:"
+          echo "   - Go 단위 테스트: 통과"
+          echo "   - 메모리 누수 시뮬레이션: 통과"
+          echo "   - RSS 증가량 검사: 완료"
+          echo "   - pprof 힙 프로파일: 생성됨"
+
+  kubernetes-leak-demo:
+    runs-on: ubuntu-latest
+    name: 쿠버네티스 메모리 누수 데모
+    needs: memory-leak-test
+    
+    steps:
+      - name: 📥 코드 체크아웃
+        uses: actions/checkout@v4
+        
+      - name: 🐳 Docker 빌드
+        run: |
+          docker build -t memleak:ci .
+          
+      - name: 🚀 Kind 클러스터 설정
+        uses: helm/kind-action@v1.10.0
+        with:
+          node_image: kindest/node:v1.28.0
+          
+      - name: 📦 이미지 로드
+        run: |
+          kind load docker-image memleak:ci
+          
+      - name: 🎯 메모리 누수 데모 배포
+        run: |
+          cat > leaky.yaml <<'YAML'
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: memleak-demo
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: leaky
+            namespace: memleak-demo
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: leaky
+            template:
+              metadata:
+                labels:
+                  app: leaky
+              spec:
+                containers:
+                - name: leaky
+                  image: memleak:ci
+                  ports:
+                  - containerPort: 6060
+                  resources:
+                    requests:
+                      memory: "128Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "512Mi"
+                      cpu: "500m"
+          YAML
+          
+          kubectl apply -f leaky.yaml
+          kubectl -n memleak-demo rollout status deploy/leaky --timeout=120s
+          
+      - name: 🔍 Pod 상태 확인
+        run: |
+          kubectl -n memleak-demo get pods
+          kubectl -n memleak-demo describe pod -l app=leaky
+          
+      - name: 📊 pprof 힙 프로파일 수집 (포트포워딩)
+        run: |
+          POD=$(kubectl -n memleak-demo get pod -l app=leaky -o jsonpath='{.items[0].metadata.name}')
+          
+          # 포트포워딩 시작
+          kubectl -n memleak-demo port-forward pod/$POD 6060:6060 >/dev/null 2>&1 &
+          PF_PID=$!
+          
+          # 포트포워딩 대기
+          sleep 5
+          
+          # 힙 프로파일 수집
+          curl -s http://127.0.0.1:6060/debug/pprof/heap > k8s_heap.pb
+          
+          # 프로파일 분석
+          echo "쿠버네티스 힙 프로파일 크기: $(wc -c < k8s_heap.pb) bytes"
+          
+          # 포트포워딩 종료
+          kill $PF_PID || true
+          
+      - name: 🧹 정리
+        run: |
+          kubectl delete ns memleak-demo --ignore-not-found=true
+          echo "✅ 쿠버네티스 데모 정리 완료"

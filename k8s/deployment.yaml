@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leaky
+  namespace: memleak-demo
+  labels:
+    app: leaky
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: leaky
+  template:
+    metadata:
+      labels:
+        app: leaky
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "6060"
+        prometheus.io/path: "/debug/pprof/"
+    spec:
+      containers:
+      - name: leaky
+        image: memleak:latest
+        imagePullPolicy: Never  # 로컬 이미지 사용
+        ports:
+        - containerPort: 6060
+          name: pprof
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /debug/pprof/
+            port: 6060
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /debug/pprof/
+            port: 6060
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          capabilities:
+            drop:
+            - ALL
