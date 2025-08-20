@@ -1,4 +1,4 @@
-# 🚨 메모리 누수 시뮬레이션 및 eBPF 트래킹 데모
+# 🚨 은밀한 메모리 누수 시뮬레이션 및 eBPF 트래킹 데모
 
 [![Docker](https://img.shields.io/badge/Docker-20.10+-2496ED.svg?logo=docker)](https://www.docker.com/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.20+-326CE5.svg?logo=kubernetes)](https://kubernetes.io/)
@@ -7,30 +7,48 @@
 
 ## 📋 개요
 
-이 프로젝트는 **C 기반 메모리 누수 시뮬레이터**와 **eBPF 트래킹 도구**를 사용하여 실제 운영 환경에서 발생할 수 있는 메모리 누수 시나리오를 시뮬레이션하고 진단하는 완전한 데모 환경을 제공합니다.
+이 프로젝트는 **표준 모니터링에서는 "정상"이지만 실제로는 메모리 누수가 발생하는 서비스**를 시뮬레이션하여, eBPF 도구의 중요성을 체감할 수 있는 완전한 데모 환경을 제공합니다.
 
-## 🎯 핵심 특징
+## 🎯 핵심 시나리오
 
-- ✅ **Go 환경 불필요**: Docker 이미지만으로 즉시 실행
-- ✅ **효율적인 메모리 누수**: C 언어로 실제 malloc/free 누락 시뮬레이션
-- ✅ **eBPF 트래킹 최적화**: 커널 레벨에서 정확한 메모리 할당 추적
-- ✅ **가벼운 이미지**: 정적 컴파일로 최소 크기
-- ✅ **자동화된 배포**: 원클릭 쿠버네티스 배포
+### **문제 상황**
+> 운영 서비스의 응답이 점점 느려졌다.
+> Prometheus, Grafana, 쿠버네티스 대시보드 모두 "정상".
+> Pod 상태도 Running, 이벤트도 특이사항 없음.
+> 하지만 사용자들은 불만을 쏟아냈다.
+> 그때부터 진짜 문제를 추적하기 시작했다.
+
+### **표준 모니터링의 맹점**
+- ✅ **Pod 상태**: Running (정상)
+- ✅ **헬스체크**: Liveness/ReadinessProbe 통과
+- ✅ **메트릭**: Prometheus/Grafana에서 "정상" 표시
+- ✅ **GC**: 정상 동작
+- ❌ **실제**: 메모리 누수로 인한 성능 저하
+- ❌ **사용자 경험**: 응답 지연, 불만 증가
+
+### **eBPF 진단의 중요성**
+- 🔍 **GC 로그/앱 내 메트릭**: 유의미한 패턴 없음
+- 🔍 **eBPF 기반 실시간 추적**: 문제 즉시 발견
+- 🔍 **메모리 할당/해제 추적**: 비정상 패턴 식별
+- 🔍 **누수 지점 정확한 파악**: 근본 원인 발견
 
 ## 🏗️ 아키텍처
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   C App         │    │   Kubernetes    │    │   eBPF Tools    │
-│   (Memory       │    │   Cluster       │    │                 │
-│    Leak)        │    │                 │    │                 │
+│   C Service     │    │   Kubernetes    │    │   eBPF Tools    │
+│   (Stealth      │    │   Cluster       │    │                 │
+│    Memory       │    │                 │    │                 │
+│     Leak)       │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   malloc/free   │    │   Privileged    │    │   Inspektor     │
-│   누락 시뮬레이션│    │   Container     │    │   Gadget       │
+│   HTTP Server   │    │   Privileged    │    │   Inspektor     │
+│   + Metrics     │    │   Container     │    │   Gadget       │
+│   (Fake         │    │                 │    │                 │
+│    Healthy)     │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -87,30 +105,36 @@ sudo /usr/share/bcc/tools/memleak -p <pid> --show-references
 
 ## 📊 시뮬레이션 시나리오
 
-### Phase 1: 메모리 누수 발생
-- **5초마다 1MB씩 메모리 누수**
-- **최대 1000MB까지 누적**
-- **실제 malloc 호출로 실제적인 시뮬레이션**
+### Phase 1: 표면적 정상
+- **HTTP 서버**: 모든 요청에 "정상" 응답
+- **Prometheus 메트릭**: 거짓 "정상" 데이터 제공
+- **헬스체크**: Liveness/ReadinessProbe 항상 통과
+- **Pod 상태**: Running, 이벤트 없음
 
-### Phase 2: 표준 모니터링의 한계
-- **Pod 상태**: Running
-- **헬스체크**: 정상
-- **이벤트**: 특이사항 없음
-- **하지만**: 메모리 사용량 지속 증가
+### Phase 2: 은밀한 메모리 누수
+- **백그라운드 스레드**: 8초마다 1MB씩 메모리 누수
+- **최대 누수량**: 2GB까지 누적
+- **로그 최소화**: 20개마다만 로그 출력
+- **표면적 정상**: 모든 모니터링 도구에서 "정상" 표시
 
-### Phase 3: eBPF 진단
-- **Inspektor Gadget memleak**으로 실시간 추적
-- **메모리 할당 패턴** 분석
-- **스택 트레이스**로 누수 지점 식별
+### Phase 3: 사용자 불만 증가
+- **응답 지연**: 메모리 누수로 인한 성능 저하
+- **사용자 경험**: 점진적 서비스 품질 저하
+- **표준 모니터링**: 여전히 "정상" 신호
 
-### Phase 4: 문제 해결
-- **근본 원인** 발견
-- **코드 수정** 및 배포
-- **예방책** 수립
+### Phase 4: eBPF 진단
+- **Inspektor Gadget memleak**: 실시간 메모리 할당 추적
+- **비정상 패턴 발견**: 할당된 메모리 회수 누락
+- **누수 지점 식별**: 스택 트레이스로 정확한 위치 파악
+
+### Phase 5: 문제 해결
+- **근본 원인 발견**: 백그라운드 메모리 누수 스레드
+- **코드 수정**: 메모리 누수 로직 제거
+- **예방책 수립**: eBPF 트래킹 자동화
 
 ## 🛠️ 기술 스택
 
-- **언어**: C (정적 컴파일)
+- **언어**: C (멀티스레드)
 - **컨테이너**: Docker (Alpine Linux)
 - **오케스트레이션**: Kubernetes
 - **진단**: eBPF (Inspektor Gadget, BCC)
@@ -128,6 +152,9 @@ k8s-memleak/
 │   └── LICENSE                # 라이선스
 ├── 🔧 소스 코드
 │   └── src/                   # C 소스 코드
+│       ├── main_service.c     # 통합 서비스 (메인)
+│       ├── healthy_service.c  # HTTP 헬스체크 서비스
+│       ├── fake_metrics.c     # Prometheus 메트릭 서버
 │       └── memory_leak.c      # 메모리 누수 시뮬레이터
 ├── 🐳 컨테이너
 │   ├── Dockerfile             # 최적화된 Docker 이미지
@@ -135,6 +162,7 @@ k8s-memleak/
 ├── ☸️ 쿠버네티스
 │   ├── deployment.yaml        # 애플리케이션 배포
 │   ├── service.yaml           # 서비스 설정
+│   ├── prometheus-config.yaml # Prometheus 설정
 │   └── namespace.yaml         # 네임스페이스
 └── 🚀 배포 패키지
     └── deploy-package/        # 다른 클러스터용
@@ -147,8 +175,13 @@ k8s-memleak/
 # C 프로그램 빌드
 make build
 
-# 메모리 누수 시뮬레이션 실행
+# 메인 서비스 실행 (HTTP + 메트릭 + 메모리 누수)
 make run
+
+# 개별 서비스 실행
+make run-healthy    # 헬스체크만
+make run-metrics    # 메트릭 서버만
+make run-leak       # 메모리 누수만
 ```
 
 ### Docker 실행
@@ -183,8 +216,8 @@ make track-memory
 
 ## 📈 성능 지표
 
-- **메모리 누수 속도**: 1MB/5초
-- **최대 누수량**: 1000MB
+- **메모리 누수 속도**: 1MB/8초 (은밀하게)
+- **최대 누수량**: 2GB
 - **트래킹 정확도**: 커널 레벨 (99.9%+)
 - **오버헤드**: 최소 (eBPF 최적화)
 - **배포 시간**: < 2분
@@ -209,10 +242,13 @@ make track-memory
 kubectl -n memleak-demo get all
 
 # 로그 확인
-kubectl -n memleak-demo logs -f deployment/memory-leaker
+kubectl -n memleak-demo logs -f deployment/stealth-memory-leaker
 
 # 이벤트 확인
 kubectl -n memleak-demo get events
+
+# 디버깅 정보
+make debug
 ```
 
 ## 📚 상세 가이드
@@ -270,4 +306,6 @@ GitHub Discussions에서 질문이나 아이디어를 공유해주세요.
 
 **⚠️ 주의**: 이 데모는 교육 목적으로만 사용되어야 합니다. 실제 운영 환경에서는 신중하게 테스트하고 검증된 도구들을 사용하세요.
 
-**🎯 목표**: eBPF의 강력함을 체험하고, 실제 운영 환경에서의 메모리 누수 진단 능력을 향상시키세요!
+**🎯 목표**: 표준 모니터링의 한계를 체감하고, eBPF의 강력함을 경험하여 실제 운영 환경에서의 문제 진단 능력을 향상시키세요!
+
+**🔍 핵심 학습**: "정상" 신호에 안주하지 말고, eBPF로 진짜 문제를 추적하세요!

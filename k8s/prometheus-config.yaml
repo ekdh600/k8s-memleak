@@ -3,49 +3,109 @@ kind: ConfigMap
 metadata:
   name: prometheus-config
   namespace: memleak-demo
+  labels:
+    app: prometheus
+    purpose: "stealth-memory-leak-demo"
 data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
       evaluation_interval: 15s
     
+    # Alerting rules
     rule_files:
-      - /etc/prometheus/rules/*.yml
+      # - "first_rules.yml"
+      # - "second_rules.yml"
     
+    # Alertmanager configuration
     alerting:
       alertmanagers:
-        - static_configs:
-            - targets:
-              - alertmanager:9093
+        # - static_configs:
+        #     - targets:
+        #       # - alertmanager:9093
     
+    # Load rules once and periodically evaluate them
+    evaluation:
+      # - "first_rules.yml"
+      # - "second_rules.yml"
+    
+    # Scrape configuration
     scrape_configs:
+      # Prometheus 자체 모니터링
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
+      # 은밀한 메모리 누수 시뮬레이터 (거짓 "정상" 메트릭)
+      - job_name: 'stealth-memory-leaker'
+        static_configs:
+          - targets: ['stealth-memory-leaker-service:9090']
+        scrape_interval: 10s
+        metrics_path: /metrics
+        
+        # 메트릭 레이블 추가
+        relabel_configs:
+        - source_labels: [__address__]
+          target_label: instance
+          regex: '([^:]+)(?::\d+)?'
+          replacement: '${1}'
+        - source_labels: [__address__]
+          target_label: service
+          replacement: 'stealth-memory-leaker'
+        - source_labels: [__address__]
+          target_label: namespace
+          replacement: 'memleak-demo'
+        - source_labels: [__address__]
+          target_label: purpose
+          replacement: 'stealth-memory-leak-demo'
+        
+        # 메트릭 필터링 (거짓 "정상" 데이터만)
+        metric_relabel_configs:
+        - source_labels: [__name__]
+          regex: '.*'
+          action: keep
+        - source_labels: [__name__]
+          target_label: metric_source
+          replacement: 'fake-healthy'
+        - source_labels: [__name__]
+          target_label: monitoring_type
+          replacement: 'standard'
+        - source_labels: [__name__]
+          target_label: reliability
+          replacement: 'deceptive'
+      
+      # 쿠버네티스 노드 메트릭
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+        - role: node
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_node_name]
+          target_label: node
+        - source_labels: [__meta_kubernetes_node_label_kubernetes_io_hostname]
+          target_label: hostname
+      
+      # 쿠버네티스 Pod 메트릭
       - job_name: 'kubernetes-pods'
         kubernetes_sd_configs:
-          - role: pod
+        - role: pod
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-            action: keep
-            regex: true
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
-            action: replace
-            target_label: __metrics_path__
-            regex: (.+)
-          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            regex: ([^:]+)(?::\d+)?;(\d+)
-            replacement: $1:$2
-            target_label: __address__
-          - action: labelmap
-            regex: __meta_kubernetes_pod_label_(.+)
-          - source_labels: [__meta_kubernetes_namespace]
-            action: replace
-            target_label: kubernetes_namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            action: replace
-            target_label: kubernetes_pod_name
-      
-      - job_name: 'leaky-app'
-        static_configs:
-          - targets: ['leaky-service.memleak-demo.svc.cluster.local:6060']
-        metrics_path: /debug/pprof/
-        scrape_interval: 10s
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: kubernetes_pod_name
