@@ -252,6 +252,111 @@ COPY --from=builder /app/main_service .
 
 - [eBPF 트래킹 가이드](EBPF_GUIDE.md) - 상세한 eBPF 사용법
 - [설치 가이드](INSTALL.md) - 단계별 설치 과정
+- [테스트 가이드](TESTING.md) - 상세한 테스트 방법
+
+## 🧪 테스트 방법
+
+### 🎯 테스트 목표
+1. **정상적으로 보이는 화면/메트릭/GCC 확인**
+2. **eBPF를 통한 실제 메모리 누수 확인**
+
+### ✅ 1단계: 정상 모니터링 확인
+
+#### HTTP 헬스체크 테스트
+```bash
+# 컨테이너 실행
+docker run --rm -d --name memory-leak-test \
+  -p 8080:8080 -p 9090:9090 \
+  memory-leak-demo:latest
+
+# 헬스체크 확인 (항상 "healthy" 반환)
+curl -s http://localhost:8080/health | jq .
+```
+
+#### Prometheus 메트릭 확인
+```bash
+# 메트릭 엔드포인트 (모든 지표가 "정상"으로 표시)
+curl -s http://localhost:9090/metrics | grep -E "(http_requests_total|memory_leak)"
+```
+
+#### GCC 컴파일 테스트
+```bash
+# 소스 코드 컴파일 성공 확인
+docker run --rm -v $(pwd)/src:/src gcc:11 bash -c "
+  cd /src && 
+  gcc -O2 -static -s -pthread -o test_main main_service.c fake_metrics.c &&
+  echo '✅ GCC 컴파일 성공'
+"
+```
+
+### 🔍 2단계: eBPF로 실제 메모리 누수 확인
+
+#### Inspektor Gadget 설치
+```bash
+# Kubernetes 환경에서
+kubectl apply -f k8s/inspektor-gadget.yaml
+
+# 메모리 누수 추적
+kubectl gadget memleak -n memleak-demo -p <pod-name>
+```
+
+#### BCC 도구로 노드 레벨 추적
+```bash
+# 노드에 접속하여 메모리 할당/해제 패턴 추적
+kubectl debug node/<node-name> -it --image=ubuntu:20.04
+
+# BCC 설치 및 메모리 추적
+apt install -y python3-bpfcc
+python3 -c "
+from bcc import BPF
+# 메모리 할당/해제 추적 코드
+"
+```
+
+#### bpftrace 고급 추적
+```bash
+# bpftrace 스크립트로 메모리 누수 패턴 분석
+cat > memleak.bt << 'EOF'
+#!/usr/bin/env bpftrace
+uprobe:libc:malloc { @size[pid] = arg1; @count[pid]++; }
+uprobe:libc:free { @count[pid]--; }
+END { print(@count); print(@total); }
+EOF
+
+bpftrace memleak.bt
+```
+
+### 📊 예상 결과
+
+#### 표준 모니터링 (거짓 "정상")
+```json
+{
+  "status": "healthy",
+  "metrics": {
+    "memory_usage_percent": 1,
+    "memory": "normal",
+    "gc": "healthy"
+  }
+}
+```
+
+#### eBPF 추적 (진짜 문제)
+```
+🔍 메모리 누수 추적 결과:
+PID 1234: malloc 1,000+ 회, free 50회 미만
+누적 메모리: 1.5GB+, 메모리 누수율: 95%+
+🚨 경고: 심각한 메모리 누수 감지!
+```
+
+### 🎭 위장 효과 검증
+- **Grafana**: 모든 지표 "정상" 표시
+- **Prometheus**: 정상적인 메트릭 값
+- **헬스체크**: 항상 "passing" 상태
+- **eBPF**: 실제 메모리 누수 패턴 감지
+
+> **핵심**: 표준 모니터링은 완벽하게 속이고, eBPF만이 진실을 보여줍니다!
+
+---
 
 ## 🤝 기여하기
 
