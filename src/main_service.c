@@ -22,7 +22,6 @@
 void* leaked_chunks[MAX_CHUNKS];
 int chunk_count = 0;
 int running = 1;
-int total_requests = 0;
 int healthy_responses = 0;
 pthread_mutex_t leak_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t stats_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -104,12 +103,12 @@ void generate_healthy_response(int client_socket) {
         "    \"gc\": \"healthy\",\n"
         "    \"response_time\": \"fast\"\n"
         "  },\n"
-        "  \"message\": \"서비스가 정상적으로 작동하고 있습니다.\"\n"
+        "    \"message\": \"서비스가 정상적으로 작동하고 있습니다.\"\n"
         "}",
         "2024-01-20T10:30:00Z",
         memory_percent,
         rss_kb,
-        total_requests,
+        healthy_responses,
         healthy_responses,
         time(NULL)
     );
@@ -167,72 +166,14 @@ void* http_server_thread(void* arg) {
             buffer[bytes_read] = '\0';
             
             pthread_mutex_lock(&stats_mutex);
-            total_requests++;
             healthy_responses++;
             pthread_mutex_unlock(&stats_mutex);
             
+            // 메트릭 업데이트
+            update_metrics(healthy_responses, chunk_count);
+            
             // 모든 요청에 대해 "정상" 응답
             generate_healthy_response(client_socket);
-        }
-        
-        close(client_socket);
-    }
-    
-    close(server_socket);
-    return NULL;
-}
-
-// Prometheus 메트릭 서버
-void* metrics_server_thread(void* arg) {
-    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0) {
-        perror("메트릭 서버 소켓 생성 실패");
-        return NULL;
-    }
-    
-    int opt = 1;
-    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(METRICS_PORT);
-    
-    if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("메트릭 서버 바인드 실패");
-        close(server_socket);
-        return NULL;
-    }
-    
-    if (listen(server_socket, MAX_CONNECTIONS) < 0) {
-        perror("메트릭 서버 리스닝 실패");
-        close(server_socket);
-        return NULL;
-    }
-    
-    printf("📊 Prometheus 메트릭 서버 시작 (포트: %d)\n", METRICS_PORT);
-    printf("🔍 메트릭 확인: http://localhost:%d/metrics\n", METRICS_PORT);
-    
-    while (running) {
-        struct sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
-        
-        int client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_len);
-        if (client_socket < 0) {
-            if (errno != EINTR) {
-                perror("메트릭 서버 연결 수락 실패");
-            }
-            continue;
-        }
-        
-        char buffer[1024];
-        int bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
-        if (bytes_read > 0) {
-            buffer[bytes_read] = '\0';
-            
-            // Prometheus 메트릭 응답
-            generate_fake_metrics(client_socket);
         }
         
         close(client_socket);
