@@ -11,16 +11,14 @@
 
 > 그때부터 진짜 문제를 추적하기 시작했다.
 
-
 ## 🏗️ 프로젝트 구조
 
 ```
-k8s-memleak/
+memory-leak-demo/
 ├── 📚 문서
 │   ├── README.md              # 이 파일
 │   ├── EBPF_GUIDE.md          # eBPF 트래킹 상세 가이드
 │   ├── INSTALL.md             # 설치 가이드
-│   ├── ENVIRONMENT_SETUP.md   # 환경별 설치 가이드
 │   └── LICENSE                # 라이선스
 ├── 🔧 소스 코드
 │   └── src/                   # C 소스 코드
@@ -29,94 +27,72 @@ k8s-memleak/
 │       └── fake_metrics.c     # Prometheus 메트릭 서버
 ├── 🐳 컨테이너
 │   ├── Dockerfile             # 최적화된 Docker 이미지
-│   └── Makefile               # 환경별 자동 감지 빌드
+│   └── docker-compose.yml     # 로컬 테스트용
 ├── ☸️ 쿠버네티스
 │   ├── deployment.yaml        # 애플리케이션 배포
 │   ├── service.yaml           # 서비스 설정
 │   ├── prometheus.yaml        # Prometheus 배포
 │   ├── grafana.yaml           # Grafana 배포
-│   └── namespace.yaml         # 네임스페이스
+│   ├── namespace.yaml         # 네임스페이스
+│   └── ebpf-tools.yaml        # eBPF 도구 배포
 ├── 📊 모니터링
 │   └── grafana/               # Grafana 설정
 │       ├── dashboards/        # 대시보드 정의
 │       └── provisioning/      # 자동 설정
 ├── 🔧 스크립트
-│   ├── install-rhel8.sh      # RHEL 8 최소 환경 구성
-│   └── install-ubuntu.sh     # Ubuntu 최소 환경 구성
-└── 🚀 배포 패키지
-    └── deploy-package/        # 다른 클러스터용
+│   ├── build.sh               # 이미지 빌드 스크립트
+│   ├── deploy.sh              # 배포 스크립트
+│   ├── ebpf-setup.sh          # eBPF 도구 설정
+│   └── cleanup.sh             # 정리 스크립트
+└── 📦 eBPF 도구
+    ├── inspektor-gadget.yaml  # Inspektor Gadget 설치
+    └── bcc-tools/             # BCC 도구 (선택사항)
 ```
 
 ## 🚀 빠른 시작
 
-### 1. 환경별 자동 설치
+### 1. 프로젝트 클론
 ```bash
-# RHEL 8
-sudo ./scripts/install-rhel8.sh
-
-# Ubuntu
-sudo ./scripts/install-ubuntu.sh
-
-# 또는 Makefile 사용 (자동 감지)
-make install
+git clone <repository-url>
+cd memory-leak-demo
 ```
 
-### 2. 프로젝트 클론
+### 2. 컨테이너 이미지 빌드
 ```bash
-git clone https://github.com/ekdh600/k8s-memleak.git
-cd k8s-memleak
+./scripts/build.sh
 ```
 
-### 3. 컨테이너 이미지 빌드
+### 3. 쿠버네티스에 배포
 ```bash
-make docker-build
+./scripts/deploy.sh
 ```
 
-### 4. 쿠버네티스에 배포
+### 4. eBPF 도구 설정
 ```bash
-make deploy
+./scripts/ebpf-setup.sh
 ```
 
-### 5. eBPF 도구 설치
+### 5. 메모리 누수 트래킹
 ```bash
-make install-ebpf
+# Pod 이름 확인
+kubectl -n memleak-demo get pods
+
+# Inspektor Gadget으로 메모리 누수 추적
+kubectl gadget memleak -n memleak-demo -p <pod-name>
 ```
 
-### 6. 메모리 누수 트래킹
+## 🔧 주요 스크립트
+
+### 빌드 및 배포
 ```bash
-make track-memory
+./scripts/build.sh              # Docker 이미지 빌드
+./scripts/deploy.sh             # Kubernetes 배포
+./scripts/cleanup.sh            # 환경 정리
 ```
 
-## 🔧 주요 명령어
-
-### 환경 구성
+### eBPF 설정
 ```bash
-make install          # 환경별 자동 설치
-make install-rhel8    # RHEL 8 전용
-make install-ubuntu   # Ubuntu 전용
-make check-k8s        # 쿠버네티스 도구 확인
-```
-
-### 빌드 및 실행
-```bash
-make build            # C 프로그램 빌드
-make run              # 로컬 실행
-make docker-build     # 컨테이너 이미지 빌드
-make docker-run       # 컨테이너 실행
-```
-
-### 배포 및 관리
-```bash
-make deploy           # 쿠버네티스 배포
-make status           # 배포 상태 확인
-make logs             # 실시간 로그
-make cleanup          # 정리
-```
-
-### eBPF 트래킹
-```bash
-make install-ebpf     # eBPF 도구 설치
-make track-memory     # 메모리 누수 추적
+./scripts/ebpf-setup.sh         # eBPF 도구 설치 및 설정
 ```
 
 ## 📊 시뮬레이션 시나리오
@@ -154,13 +130,13 @@ kubectl -n memleak-demo get pods
 kubectl gadget memleak -n memleak-demo -p <pod-name>
 ```
 
-### BCC memleak (RHEL 8)
+### BCC memleak (노드에서 직접 실행)
 ```bash
 # 특정 프로세스 추적
 sudo /usr/share/bcc/tools/memleak -p <pid>
 ```
 
-### bpftrace (RHEL 8)
+### bpftrace (노드에서 직접 실행)
 ```bash
 # 메모리 할당 이벤트 추적
 sudo bpftrace -e '
@@ -172,43 +148,18 @@ tracepoint:syscalls:sys_enter_mmap {
 
 ## 🌍 지원하는 환경
 
-- **RHEL 8**: 최적화된 지원 (자동 설치 스크립트)
-- **Ubuntu**: 자동 설치 스크립트
 - **로컬**: Kind, Minikube, Docker Desktop
 - **클라우드**: AKS, EKS, GKE
 - **엔터프라이즈**: OpenShift
 - **사용자 정의**: 모든 쿠버네티스 클러스터
 
-## 🚀 다른 클러스터에서 사용
-
-### 1. 프로젝트 클론
-```bash
-git clone https://github.com/ekdh600/k8s-memleak.git
-cd k8s-memleak
-```
-
-### 2. 환경별 설치
-```bash
-# RHEL 8
-sudo ./scripts/install-rhel8.sh
-
-# Ubuntu
-sudo ./scripts/install-ubuntu.sh
-```
-
-### 3. 빠른 시작
-```bash
-make docker-build
-make deploy
-```
-
 ## 🛠️ 기술 스택
 
 - **언어**: C (멀티스레드)
-- **컨테이너**: Docker/Podman
+- **컨테이너**: Docker
 - **오케스트레이션**: Kubernetes
 - **진단**: eBPF (Inspektor Gadget, BCC, bpftrace)
-- **빌드**: Make, GCC
+- **빌드**: Docker, GCC
 - **모니터링**: 커널 레벨 추적
 - **대시보드**: Grafana (거짓 "정상" 데이터)
 
@@ -216,7 +167,6 @@ make deploy
 
 - [eBPF 트래킹 가이드](EBPF_GUIDE.md) - 상세한 eBPF 사용법
 - [설치 가이드](INSTALL.md) - 단계별 설치 과정
-- [환경별 설치 가이드](ENVIRONMENT_SETUP.md) - RHEL 8 등 환경별 설치
 
 ## 🤝 기여하기
 

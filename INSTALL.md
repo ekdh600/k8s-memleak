@@ -1,226 +1,275 @@
-# 🚀 설치 가이드
+# 🚀 Memory Leak Demo 설치 가이드
+
+이 가이드는 Memory Leak Demo 프로젝트를 설치하고 실행하는 방법을 설명합니다.
 
 ## 📋 사전 요구사항
 
 ### 필수 도구
-- **Docker**: [다운로드](https://docs.docker.com/get-docker/)
-- **kubectl**: [설치 가이드](https://kubernetes.io/docs/tasks/tools/)
+- **Docker**: 20.10+ (Docker Desktop 또는 Docker Engine)
+- **kubectl**: Kubernetes 클라이언트
+- **Kubernetes 클러스터**: 로컬 또는 클라우드
 
-### 선택 도구
-- **Kind**: 로컬 쿠버네티스 클러스터 (로컬 개발용)
-- **Minikube**: 로컬 쿠버네티스 클러스터 (로컬 개발용)
-- **Make**: 빌드 자동화 (macOS: `brew install make`)
+### 권장 환경
+- **로컬**: Kind, Minikube, Docker Desktop Kubernetes
+- **클라우드**: AKS, EKS, GKE
+- **OS**: Linux, macOS, Windows (WSL2)
 
-## 🔧 설치 과정
+## 🚀 빠른 설치
 
 ### 1. 프로젝트 클론
 ```bash
-git clone https://github.com/ekdh600/k8s-memleak.git
-cd k8s-memleak
+git clone <repository-url>
+cd memory-leak-demo
 ```
 
 ### 2. Docker 이미지 빌드
 ```bash
-make docker-build
+./scripts/build.sh
 ```
 
-### 3. 쿠버네티스 배포
+### 3. Kubernetes 배포
 ```bash
-make deploy
+./scripts/deploy.sh
 ```
 
-### 4. eBPF 도구 설치
+### 4. eBPF 도구 설정
 ```bash
-make install-ebpf
+./scripts/ebpf-setup.sh
 ```
 
-## 🚀 빠른 시작
+## 🔧 상세 설치 과정
 
-### 로컬 실행
+### 1단계: 환경 확인
+
+#### Docker 확인
 ```bash
-# C 프로그램 빌드
-make build
-
-# 메모리 누수 시뮬레이션 실행
-make run
+docker --version
+docker info
 ```
 
-### Docker 실행
+#### Kubernetes 클러스터 확인
 ```bash
-# Docker 이미지 빌드
-make docker-build
-
-# Docker 컨테이너 실행
-make docker-run
+kubectl cluster-info
+kubectl get nodes
 ```
 
-### 쿠버네티스 배포
+### 2단계: 이미지 빌드
+
+#### 자동 빌드 (권장)
 ```bash
-# 배포
-make deploy
-
-# 상태 확인
-make status
-
-# 로그 확인
-make logs
+./scripts/build.sh
 ```
 
-## 🔍 eBPF 트래킹
-
-### Inspektor Gadget 설치
+#### 수동 빌드
 ```bash
-make install-ebpf
+docker build -t memory-leak-demo:latest .
 ```
 
-### 메모리 누수 추적
+### 3단계: Kubernetes 배포
+
+#### 자동 배포 (권장)
 ```bash
-make track-memory
+./scripts/deploy.sh
 ```
 
-### 수동 트래킹
+#### 수동 배포
+```bash
+# 네임스페이스 생성
+kubectl apply -f k8s/namespace.yaml
+
+# Prometheus 배포
+kubectl apply -f k8s/prometheus.yaml
+
+# Grafana 배포
+kubectl apply -f k8s/grafana.yaml
+
+# 메인 애플리케이션 배포
+kubectl apply -f k8s/deployment.yaml
+
+# 서비스 배포
+kubectl apply -f k8s/service.yaml
+```
+
+### 4단계: eBPF 도구 설정
+
+#### Inspektor Gadget 설치
+```bash
+kubectl apply -f k8s/inspektor-gadget.yaml
+```
+
+#### BCC 도구 설치 (노드에서)
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y bpfcc-tools
+
+# RHEL/CentOS
+sudo yum install -y bcc-tools
+```
+
+#### bpftrace 설치 (노드에서)
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y bpftrace
+
+# RHEL/CentOS
+sudo yum install -y bpftrace
+```
+
+## 🧪 테스트 및 검증
+
+### 1. 배포 상태 확인
+```bash
+kubectl -n memleak-demo get all
+kubectl -n memleak-demo get pods
+```
+
+### 2. 서비스 접속 테스트
+```bash
+# 포트포워딩
+kubectl -n memleak-demo port-forward svc/stealth-memory-leaker 8080:8080
+
+# 브라우저에서 접속
+# http://localhost:8080/health
+```
+
+### 3. Grafana 접속
+```bash
+# 포트포워딩
+kubectl -n memleak-demo port-forward svc/grafana 3000:3000
+
+# 브라우저에서 접속
+# http://localhost:3000 (admin/admin)
+```
+
+### 4. Prometheus 접속
+```bash
+# 포트포워딩
+kubectl -n memleak-demo port-forward svc/prometheus 9090:9090
+
+# 브라우저에서 접속
+# http://localhost:9090
+```
+
+## 🔍 메모리 누수 추적
+
+### Inspektor Gadget 사용
 ```bash
 # Pod 이름 확인
 kubectl -n memleak-demo get pods
 
-# eBPF로 메모리 누수 추적
+# 메모리 누수 추적
 kubectl gadget memleak -n memleak-demo -p <pod-name>
 ```
 
-## 🧪 테스트
-
-### 기본 기능 테스트
+### BCC memleak 사용 (노드에서)
 ```bash
-# 로컬 빌드 테스트
-make build
+# Pod의 PID 확인
+kubectl -n memleak-demo exec <pod-name> -- ps aux
 
-# Docker 빌드 테스트
-make docker-build
-
-# 쿠버네티스 배포 테스트
-make deploy
+# 메모리 누수 추적
+sudo /usr/share/bcc/tools/memleak -p <pid>
 ```
 
-### eBPF 트래킹 테스트
+### bpftrace 사용 (노드에서)
 ```bash
-# eBPF 도구 설치 테스트
-make install-ebpf
-
-# 트래킹 기능 테스트
-make track-memory
+# 메모리 할당 이벤트 추적
+sudo bpftrace -e '
+tracepoint:syscalls:sys_enter_mmap {
+    printf("PID %d: mmap size=%d\n", pid, args->len);
+}
+'
 ```
 
-## 📊 모니터링
+## 🐳 로컬 테스트 (Docker Compose)
 
-### Pod 상태 확인
+### 1. 로컬 실행
 ```bash
-make status
+docker-compose up -d
 ```
 
-### 실시간 로그 확인
+### 2. 서비스 접속
+- **애플리케이션**: http://localhost:8080
+- **Grafana**: http://localhost:3000 (admin/admin)
+- **Prometheus**: http://localhost:9091
+
+### 3. 정리
 ```bash
-make logs
+docker-compose down
 ```
 
-### 수동 모니터링
+## 🧹 정리
+
+### Kubernetes 리소스 정리
 ```bash
-# Pod 상태
-kubectl -n memleak-demo get all
-
-# Pod 로그
-kubectl -n memleak-demo logs -f deployment/memory-leaker
-
-# 이벤트
-kubectl -n memleak-demo get events
+./scripts/cleanup.sh
 ```
 
-## 🔍 문제 해결
-
-### 일반적인 문제들
-
-#### 1. 권한 문제
+### Docker 리소스 정리
 ```bash
-# Pod가 privileged 모드로 실행되는지 확인
-kubectl -n memleak-demo describe pod <pod-name>
-
-# 필요한 capabilities 확인
-kubectl -n memleak-demo get pod <pod-name> -o yaml | grep -A 10 securityContext
+docker-compose down
+docker rmi memory-leak-demo:latest
 ```
 
-#### 2. 이미지 빌드 실패
-```bash
-# Docker 데몬 상태 확인
-docker info
+## 🚨 문제 해결
 
-# 이미지 정리 후 재빌드
-docker system prune -f
-make docker-build
-```
+### 일반적인 문제
 
-#### 3. 배포 실패
-```bash
-# 네임스페이스 확인
-kubectl get namespaces | grep memleak
-
-# 이벤트 확인
-kubectl -n memleak-demo get events
-
-# Pod 상태 상세 확인
-kubectl -n memleak-demo describe pod <pod-name>
-```
-
-#### 4. eBPF 도구 설치 실패
-```bash
-# 네임스페이스 확인
-kubectl get namespaces | grep gadget
-
-# Pod 상태 확인
-kubectl get pods -n gadget-system
-
-# 로그 확인
-kubectl logs -n gadget-system -l app=gadget
-```
-
-### 디버깅 명령어
+#### 1. Pod가 시작되지 않음
 ```bash
 # Pod 상태 확인
-kubectl -n memleak-demo get all
+kubectl -n memleak-demo get pods
 
-# 로그 확인
-kubectl -n memleak-demo logs -f deployment/memory-leaker
-
-# 이벤트 확인
-kubectl -n memleak-demo get events --sort-by='.lastTimestamp'
-
-# Pod 상세 정보
+# Pod 이벤트 확인
 kubectl -n memleak-demo describe pod <pod-name>
+
+# Pod 로그 확인
+kubectl -n memleak-demo logs <pod-name>
 ```
 
-## 📚 다음 단계
+#### 2. 서비스에 접속할 수 없음
+```bash
+# 서비스 상태 확인
+kubectl -n memleak-demo get svc
 
-1. **eBPF 트래킹**: [eBPF 가이드](EBPF_GUIDE.md)
-2. **고급 진단**: 다양한 eBPF 도구 사용법
-3. **성능 최적화**: 트래킹 오버헤드 최소화
+# 엔드포인트 확인
+kubectl -n memleak-demo get endpoints
+```
+
+#### 3. eBPF 도구가 작동하지 않음
+```bash
+# Inspektor Gadget 상태 확인
+kubectl -n gadget get pods
+
+# 노드에서 BCC 도구 확인
+sudo /usr/share/bcc/tools/memleak --help
+```
+
+### 로그 확인
+```bash
+# 애플리케이션 로그
+kubectl -n memleak-demo logs -f deployment/stealth-memory-leaker
+
+# Grafana 로그
+kubectl -n memleak-demo logs -f deployment/grafana
+
+# Prometheus 로그
+kubectl -n memleak-demo logs -f deployment/prometheus
+```
+
+## 📚 추가 리소스
+
+- [eBPF 트래킹 가이드](EBPF_GUIDE.md)
+- [프로젝트 README](README.md)
+- [Kubernetes 공식 문서](https://kubernetes.io/docs/)
+- [eBPF 공식 문서](https://ebpf.io/)
 
 ## 🤝 지원
 
 문제가 발생하거나 질문이 있으시면:
-- [GitHub Issues](../../issues)에 버그 리포트
-- [GitHub Discussions](../../discussions)에서 질문
-- [eBPF 가이드](EBPF_GUIDE.md)에서 상세 가이드 확인
-
-## 🔄 정리
-
-### 로컬 정리
-```bash
-make clean
-```
-
-### 전체 정리
-```bash
-make clean-all
-```
+1. GitHub Issues에 문제를 등록
+2. 프로젝트 문서 확인
+3. 커뮤니티 포럼 참여
 
 ---
 
-**💡 팁**: 문제가 발생하면 `make status`로 상태를 확인하고, `make logs`로 로그를 분석하세요!
+**🎯 목표**: 표준 모니터링의 한계를 체감하고, eBPF의 강력함을 경험하여 실제 운영 환경에서의 문제 진단 능력을 향상시키세요!

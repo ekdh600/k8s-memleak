@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gadget
+  labels:
+    name: gadget
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gadget
+  namespace: gadget
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gadget
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes", "namespaces"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gadget
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gadget
+subjects:
+- kind: ServiceAccount
+  name: gadget
+  namespace: gadget
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gadget
+  namespace: gadget
+  labels:
+    app: gadget
+spec:
+  selector:
+    matchLabels:
+      app: gadget
+  template:
+    metadata:
+      labels:
+        app: gadget
+    spec:
+      serviceAccountName: gadget
+      containers:
+      - name: gadget
+        image: ghcr.io/inspektor-gadget/gadget:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          /usr/bin/gadget-daemon
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: host
+          mountPath: /host
+        - name: cgroup
+          mountPath: /sys/fs/cgroup
+        - name: debugfs
+          mountPath: /sys/kernel/debug
+        - name: proc
+          mountPath: /proc
+        - name: sys
+          mountPath: /sys
+        - name: bpf
+          mountPath: /sys/fs/bpf
+      volumes:
+      - name: host
+        hostPath:
+          path: /
+      - name: cgroup
+        hostPath:
+          path: /sys/fs/cgroup
+      - name: debugfs
+        hostPath:
+          path: /sys/kernel/debug
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: bpf
+        hostPath:
+          path: /sys/fs/bpf
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule

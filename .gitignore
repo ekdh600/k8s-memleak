@@ -1,34 +1,31 @@
-# Go 관련
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-go.work
+# Memory Leak Demo - .gitignore
 
 # 빌드 결과물
+*.o
+*.so
+*.a
 app
-bin/
-dist/
+main_service
+healthy_service
+fake_metrics
+memory_leak
 
-# 프로파일 파일
-*.pb
-profiles/
+# Docker 관련
+.dockerignore
+docker-compose.override.yml
+
+# Kubernetes 관련
+*.kubeconfig
+kubeconfig
 
 # 로그 파일
 *.log
 logs/
+*.pb
 
-# 환경 변수 파일
-.env
-.env.local
-.env.*.local
-
-# IDE 설정
-.vscode/
-.idea/
+# 임시 파일
+*.tmp
+*.temp
 *.swp
 *.swo
 *~
@@ -42,27 +39,53 @@ logs/
 ehthumbs.db
 Thumbs.db
 
-# Docker 관련
-.dockerignore
-
-# 쿠버네티스 관련
-*.kubeconfig
-kubeconfig
-
-# 임시 파일
-tmp/
-temp/
-*.tmp
-
-# 압축 파일
-*.tar.gz
-*.zip
+# IDE 관련
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
 
 # 백업 파일
 *.bak
 *.backup
-*~
+*.old
 
-# 로컬 설정
-local-config.yaml
-local-values.yaml
+# 압축 파일
+*.tar.gz
+*.zip
+*.rar
+
+# 환경 변수
+.env
+.env.local
+.env.production
+
+# 테스트 결과
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# 프로파일링 데이터
+*.prof
+*.out
+gmon.out
+
+# eBPF 관련
+*.bpf
+*.o
+*.so
+
+# 메모리 덤프
+*.dump
+*.core
+core.*
+
+# 네트워크 캡처
+*.pcap
+*.cap
+
+# 시스템 정보
+/proc/
+/sys/
+/dev/
